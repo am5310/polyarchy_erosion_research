@@ -243,3 +243,5 @@ plot(model_clean, which = 2)
 -   Removes observations with \|residual\| \> 3.
 
 -   Refits model on cleaned data.
+
+add eda
