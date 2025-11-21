@@ -1,0 +1,245 @@
+---
+title: "Polyarchy & Erosion Events"
+format: html
+editor: visual
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(MASS)
+```
+
+```{r}
+data <- readRDS("regression_data4.rds")
+
+data <- data |>
+mutate(
+  # sum of all four branches
+  total_events = executive_branch + legislative_branch + judicial_branch + law_enforcement,
+  # log of total events (if > 0)
+  log_total_events = if_else(total_events > 0, log(total_events), NA_real_),
+  actor_executive = executive_branch, actor_legislative = legislative_branch,
+  actor_judicial = judicial_branch, actor_police = law_enforcement
+  )
+```
+
+```{r}
+data_long_actor <- data |>
+  pivot_longer(
+    cols = c(executive_branch, legislative_branch, judicial_branch, law_enforcement),
+    names_to = "actor",
+    values_to = "event_count"
+    ) |>
+  mutate(actor = factor(actor,
+                        levels = c("executive_branch", "legislative_branch",
+                                   "judicial_branch", "law_enforcement"),
+                        labels = c("Executive", "Legislative", "Judicial", "Law Enforcement")
+                        )
+         )
+```
+
+## Actor-Based Visualizations by Actor
+
+### Polyarchy Distribution by Actor
+
+```{r}
+ggplot(data_long_actor, aes(x = actor, y = v2x_polyarchy, fill = actor)) +
+  geom_boxplot(alpha = 0.75) +
+  labs(
+    title = "Polyarchy Distribution by Actor",
+    x = "Actor",
+    y = "Polyarchy Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+This visualization compares the **distribution of Polyarchy scores** across country-years where events were attributed to different actors (Executive, Legislative, Judicial, Law Enforcement). This helps establish baseline differences between actors before continuing.
+
+### Scatterplots with Actor-Specific Regression Lines
+
+```{r}
+ggplot(data_long_actor, aes(x = event_count, y = v2x_polyarchy, color = actor)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ actor, scales = "free_x") +
+  labs(
+    title = "Relationship Between Actor Events & Polyarchy",
+    x = "Event Count",
+    y = "Polyarchy Score") +
+  theme_minimal()
+```
+
+These plots display the relationship between the **number of events (by actor)** and **Polyarchy**. Faceting allows each actor to have its own dynamic, rather than assuming one uniform trend.
+
+### Summary Table: Polyarchy by Actor Groups
+
+```{r}
+actor_summary <- data_long_actor |>
+  group_by(actor) |>
+  summarise(
+    mean_polyarchy = mean(v2x_polyarchy, na.rm = TRUE),
+    median_polyarchy = median(v2x_polyarchy, na.rm = TRUE),
+    mean_events = mean(event_count, na.rm = TRUE),
+    sd_events = sd(event_count, na.rm = TRUE),
+    n = n()
+    )
+
+actor_summary
+```
+
+This computes descriptive statistics **per actor group**, including mean polyarchy, median, mean events, SD, and sample size. This shows which actors operate in already weak democracies (lower mean polyarchy) and reveals actors with more frequent or more variable event patterns
+
+### Correlation of Each Actor with Polyarchy
+
+```{r}
+actor_cor <- tibble(
+  Executive = cor(data$v2x_polyarchy, data$executive_branch, use = "pairwise.complete.obs"),
+  Legislative = cor(data$v2x_polyarchy, data$legislative_branch, use = "pairwise.complete.obs"),
+  Judicial = cor(data$v2x_polyarchy, data$judicial_branch, use = "pairwise.complete.obs"),
+  Law_Enforcement = cor(data$v2x_polyarchy, data$law_enforcement, use = "pairwise.complete.obs"
+                    )
+  )
+
+actor_cor
+```
+
+Produces a tibble listing the correlation between **polyarchy** and each **actor’s event count**.
+
+## Regression Models
+
+### Model: Polyarchy vs. Actor (Categorical) + Event Count + Controls
+
+```{r}
+model_actor_group <- lm(
+  v2x_polyarchy ~ actor + event_count + gdp_log + polyarchy_lag,
+  data = data_long_actor
+  )
+
+summary(model_actor_group)
+```
+
+This tests whether actors differ in their **average effect** on polyarchy. Because the data is long-format, this is testing **actor identity effects**, not separate actor event levels
+
+### Model: Separate Actor Counts
+
+```{r}
+model_separate <- lm(
+  v2x_polyarchy ~ executive_branch + legislative_branch + judicial_branch + law_enforcement +
+    gdp_log + polyarchy_lag,
+  data = data
+  )
+
+summary(model_separate)
+```
+
+Each actor’s event count enters as a **separate independent variable**, allowing us to be able to compare independent effects. Each coefficient estimates the effect of **one additional erosion event** by that specific actor.
+
+### Model With Region Fixed Effects (if region exists)
+
+```{r}
+region_var <- NULL
+# checks if a regional variable exists
+if (is.element("e_regionpol_6C.x", names(data))) {
+  region_var <- "e_regionpol_6C.x"
+}
+
+# converts region variable to a factor
+if (is.element("Region", names(data))) {
+  region_var <- "Region"
+}
+
+# runs a regression model
+if (!is.null(region_var)) {
+  data[[region_var]] <- as.factor(data[[region_var]])
+
+  f <- as.formula(paste0("v2x_polyarchy ~ executive_branch + legislative_branch +
+                         judicial_branch + law_enforcement + gdp_log + polyarchy_lag + ",
+                         region_var))
+  model_region <- lm(f, data = data)
+  summary(model_region)
+}
+```
+
+This checks whether the findings hold after accounting for geographic patterns.
+
+## Diagnostics
+
+```{r}
+# residials vs. fitted plot
+plot(model_separate, which = 1)
+
+# qqplot
+plot(model_separate, which = 2)
+```
+
+## Fixing Normality
+
+1.)
+
+```{r}
+data$polyarchy_logit <- qlogis(pmin(pmax(data$v2x_polyarchy, 1e-6), 1 - 1e-6))
+
+model_logit <- lm(polyarchy_logit ~ executive_branch + legislative_branch +
+                    judicial_branch + law_enforcement + gdp_log + polyarchy_lag,
+                  data = data)
+
+plot(model_logit, which = 1)
+plot(model_logit, which = 2)
+```
+
+-   Logit-transform Polyarchy to map (0,1) → (−∞, +∞). Avoiding issues with bounded dependent variables.
+
+-   Fit a linear model on transformed outcome.
+
+-   Check residual diagnostics again.
+
+2.)
+
+```{r}
+model_robust <- rlm(
+  v2x_polyarchy ~ executive_branch + legislative_branch +
+    judicial_branch + law_enforcement + gdp_log + polyarchy_lag,
+  data = data
+)
+
+plot(model_robust, which = 1)
+plot(model_robust, which = 2)
+```
+
+-   Uses **MASS::rlm** (Huber M-estimator).
+
+-   Reduces influence of outliers.
+
+-   Useful when residuals show heavy tails.
+
+3.)
+
+```{r}
+model_data <- model_separate$model  
+model_data$std_resid <- rstandard(model_separate)
+
+# filter out outliers > |3|
+model_data_clean <- model_data |>
+  filter(abs(std_resid) < 3)
+
+# refit the model on the cleaned dataset
+model_clean <- lm(
+  v2x_polyarchy ~ executive_branch + legislative_branch +
+    judicial_branch + law_enforcement + gdp_log + polyarchy_lag,
+  data = model_data_clean
+)
+
+plot(model_clean, which = 1)
+plot(model_clean, which = 2)
+```
+
+-   Extracts regression data.
+
+-   Computes standardized residuals.
+
+-   Removes observations with \|residual\| \> 3.
+
+-   Refits model on cleaned data.
