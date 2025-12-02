@@ -1,0 +1,32 @@
+---
+title: "STAT-302 Final Project Presentation: Project Title Here"
+author: "Lena Ball, Emily McKay, Allison Marckel, Rian Russell"
+date: "December 9, 2025"
+editor: visual
+format:
+  revealjs:
+    theme: default
+    slide-number: true
+    transition: fade
+    background-transition: slide
+    code-theme: minty
+    embed-resources: true
+---
+
+## Introduction
+
+### Subheading
+
+Information
+
+------------------------------------------------------------------------
+
+## Important Definitions
+
+**Democratic Erosion C:**
+
+------------------------------------------------------------------------
+
+## Heading
+
+Information

@@ -244,4 +244,4 @@ plot(model_clean, which = 2)
 
 -   Refits model on cleaned data.
 
-add eda
+We could do a parametric test but note that normality is not met, or we could try a nonparametric test so that normality does not matter.
